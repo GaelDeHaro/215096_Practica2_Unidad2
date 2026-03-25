@@ -43,7 +43,7 @@ Este proyecto nació como una adaptación de un clasificador de imágenes origin
 
 ---
 
-## 🧬 Arquitectura del Modelo
+## Arquitectura del Modelo
 
 El modelo usa **Transfer Learning** con **MobileNetV2** como base preentrenada en ImageNet.
 
@@ -205,7 +205,7 @@ http://127.0.0.1:5000
 
 ---
 
-## 🖼️ Dataset Incluido
+## Dataset Incluido
 
 El proyecto ya cuenta con todas las imágenes necesarias para entrenar y validar el modelo. **En caso de querer agregar mas imagenes, se deberan poner en las carpetas segun su categoria.**
 
