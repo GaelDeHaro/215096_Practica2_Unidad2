@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PlantAI — Clasificador de Plantas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@300;400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+  /* ── Variables ── */
+  :root {
+    --bg:        #0d1a0f;
+    --surface:   #131f14;
+    --panel:     #192b1b;
+    --border:    #2a4030;
+    --accent:    #7ec850;
+    --accent2:   #c8e89a;
+    --gold:      #d4a943;
+    --text:      #e8f0e2;
+    --muted:     #7a9a7a;
+    --danger:    #e07070;
+    --font-head: 'Playfair Display', Georgia, serif;
+    --font-body: 'DM Sans', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+    --radius:    12px;
+    --glow:      0 0 30px rgba(126,200,80,.15);
+  }
+
+  /* ── Reset & Base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Organic background texture ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 10% 20%, rgba(126,200,80,.06) 0%, transparent 70%),
+      radial-gradient(ellipse 50% 60% at 90% 80%, rgba(76,130,50,.08) 0%, transparent 70%),
+      radial-gradient(ellipse 80% 80% at 50% 50%, rgba(13,26,15,1) 0%, transparent 100%);
+    pointer-events: none;
+  }
+
+  /* ── Leaf SVG pattern overlay ── */
+  body::after {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M40 10 Q55 25 40 40 Q25 25 40 10Z' fill='none' stroke='rgba(126,200,80,0.04)' stroke-width='1'/%3E%3C/svg%3E");
+    background-size: 80px 80px;
+    opacity: 1;
+    pointer-events: none;
+  }
+
+  /* ── Layout ── */
+  .wrapper {
+    position: relative; z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+
+  /* ── Header ── */
+  header {
+    text-align: center;
+    padding: 3rem 0 2.5rem;
+    position: relative;
+  }
+  .logo-icon {
+    display: inline-flex;
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #7ec850, #2d6e20);
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    margin-bottom: 1.2rem;
+    box-shadow: 0 0 40px rgba(126,200,80,.3), 0 0 80px rgba(126,200,80,.1);
+    animation: pulse 4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 40px rgba(126,200,80,.3), 0 0 80px rgba(126,200,80,.1); }
+    50%       { box-shadow: 0 0 60px rgba(126,200,80,.5), 0 0 100px rgba(126,200,80,.2); }
+  }
+  h1 {
+    font-family: var(--font-head);
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--accent2) 0%, var(--accent) 60%, var(--gold) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.1;
+  }
+  .subtitle {
+    font-family: var(--font-mono);
+    font-size: .8rem;
+    color: var(--muted);
+    margin-top: .6rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+
+  /* ── Model status bar ── */
+  #model-status-bar {
+    display: flex; align-items: center; gap: .6rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 50px;
+    padding: .45rem 1.1rem;
+    margin: 1.5rem auto 0;
+    width: fit-content;
+    font-size: .8rem;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    transition: all .3s;
+  }
+  #model-status-bar .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted);
+    transition: background .3s;
+  }
+  #model-status-bar.loaded .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  #model-status-bar.loaded      { color: var(--accent2); }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex; gap: .5rem;
+    margin: 2.5rem 0 1.5rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0;
+  }
+  .tab-btn {
+    background: none; border: none; cursor: pointer;
+    font-family: var(--font-body);
+    font-size: .9rem;
+    color: var(--muted);
+    padding: .7rem 1.4rem;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all .2s;
+    border-radius: 6px 6px 0 0;
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .tab-btn:hover   { color: var(--text); background: rgba(126,200,80,.05); }
+  .tab-btn.active  { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; animation: fadeIn .25s ease; }
+  .tab-content.active { display: block; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.8rem;
+    margin-bottom: 1.2rem;
+  }
+  .card-title {
+    font-family: var(--font-head);
+    font-size: 1.1rem;
+    color: var(--accent2);
+    margin-bottom: 1.2rem;
+    display: flex; align-items: center; gap: .5rem;
+  }
+
+  /* ── Drop zone ── */
+  #drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 3rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all .25s;
+    position: relative;
+    overflow: hidden;
+  }
+  #drop-zone:hover, #drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(126,200,80,.04);
+    box-shadow: var(--glow);
+  }
+  #drop-zone .drop-icon { font-size: 3rem; margin-bottom: .8rem; opacity: .7; }
+  #drop-zone p { color: var(--muted); font-size: .9rem; }
+  #drop-zone p span { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  #file-input { display: none; }
+
+  /* ── Preview & results ── */
+  #preview-section {
+    display: none;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+    align-items: flex-start;
+  }
+  #preview-section.show { display: flex; flex-wrap: wrap; }
+  #preview-img {
+    width: 240px; height: 240px;
+    object-fit: cover;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #results-box { flex: 1; min-width: 240px; }
+  .top-result {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.2rem 1.4rem;
+    margin-bottom: 1rem;
+  }
+  .top-result .plant-name {
+    font-family: var(--font-head);
+    font-size: 1.6rem;
+    font-style: italic;
+    color: var(--accent2);
+    text-transform: capitalize;
+    margin-bottom: .2rem;
+  }
+  .top-result .pct {
+    font-family: var(--font-mono);
+    font-size: 2rem;
+    font-weight: 400;
+    color: var(--accent);
+  }
+
+  /* ── Bar chart ── */
+  .bar-list { list-style: none; display: flex; flex-direction: column; gap: .55rem; }
+  .bar-item { display: flex; align-items: center; gap: .7rem; font-size: .82rem; }
+  .bar-item .label { width: 90px; color: var(--muted); text-align: right; font-family: var(--font-mono); font-size: .75rem; }
+  .bar-track { flex: 1; height: 8px; background: var(--surface); border-radius: 99px; overflow: hidden; }
+  .bar-fill  { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .6s cubic-bezier(.4,0,.2,1); }
+  .bar-fill.dim { background: var(--border); }
+  .bar-pct   { width: 46px; font-family: var(--font-mono); font-size: .75rem; color: var(--muted); }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: .45rem;
+    padding: .65rem 1.4rem;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    font-family: var(--font-body);
+    font-size: .88rem;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all .2s;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #0d1a0f;
+    border-color: var(--accent);
+  }
+  .btn-primary:hover { background: var(--accent2); box-shadow: 0 0 20px rgba(126,200,80,.3); }
+  .btn-outline {
+    background: transparent;
+    color: var(--accent);
+    border-color: var(--border);
+  }
+  .btn-outline:hover { border-color: var(--accent); background: rgba(126,200,80,.05); }
+  .btn-danger {
+    background: transparent;
+    color: var(--danger);
+    border-color: var(--border);
+  }
+  .btn-danger:hover { border-color: var(--danger); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-row { display: flex; gap: .7rem; flex-wrap: wrap; margin-top: 1.2rem; }
+
+  /* ── Form fields ── */
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.2rem;
+  }
+  .field label {
+    display: block;
+    font-size: .78rem;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    margin-bottom: .35rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .field input, .field select {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: .6rem .9rem;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: .88rem;
+    transition: border-color .2s;
+  }
+  .field input:focus, .field select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(126,200,80,.12);
+  }
+  .toggle-row {
+    display: flex; align-items: center; gap: .8rem;
+    margin-bottom: 1rem;
+  }
+  .toggle-label { font-size: .85rem; color: var(--muted); }
+  .toggle {
+    position: relative;
+    width: 44px; height: 24px;
+    flex-shrink: 0;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle .slider {
+    position: absolute; inset: 0;
+    background: var(--border);
+    border-radius: 99px;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .toggle .slider::before {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    left: 3px; top: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: transform .2s;
+  }
+  .toggle input:checked + .slider { background: var(--accent); }
+  .toggle input:checked + .slider::before { transform: translateX(20px); }
+
+  /* ── Progress ── */
+  #training-progress { display: none; margin-top: 1.5rem; }
+  #training-progress.show { display: block; }
+  .progress-header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: .5rem;
+  }
+  .progress-header span { font-size: .82rem; font-family: var(--font-mono); color: var(--muted); }
+  .progress-track {
+    width: 100%; height: 10px;
+    background: var(--surface);
+    border-radius: 99px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 99px;
+    background: linear-gradient(90deg, #3a8a20, var(--accent), var(--accent2));
+    transition: width .4s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .progress-fill::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.25) 50%, transparent 100%);
+    animation: shimmer 1.5s infinite;
+  }
+  @keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+  /* ── Stats chips ── */
+  .stats-row { display: flex; gap: .7rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .stat-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .5rem .9rem;
+    font-family: var(--font-mono);
+    font-size: .8rem;
+    color: var(--muted);
+    display: flex; flex-direction: column; gap: .15rem;
+  }
+  .stat-chip strong { color: var(--accent); font-size: 1.1rem; }
+
+  /* ── Log ── */
+  #training-log {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .9rem 1rem;
+    height: 160px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: .76rem;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  #training-log p { margin: 0; }
+  #training-log p.ok { color: var(--accent); }
+  #training-log p.err { color: var(--danger); }
+
+  /* ── Import/Export ── */
+  .action-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .action-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    display: flex; flex-direction: column; gap: .8rem;
+  }
+  .action-card h3 {
+    font-family: var(--font-head);
+    font-size: 1rem;
+    color: var(--text);
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .action-card p { font-size: .83rem; color: var(--muted); line-height: 1.5; }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 2rem; right: 2rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .9rem 1.4rem;
+    font-size: .85rem;
+    color: var(--text);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all .3s;
+    z-index: 999;
+    max-width: 320px;
+    pointer-events: none;
+  }
+  #toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  #toast.success { border-color: var(--accent); color: var(--accent2); }
+  #toast.error   { border-color: var(--danger); color: var(--danger); }
+
+  /* ── Plant guide ── */
+  .plant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: .8rem;
+  }
+  .plant-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+    transition: border-color .2s;
+  }
+  .plant-card:hover { border-color: var(--accent); }
+  .plant-emoji { font-size: 2rem; margin-bottom: .4rem; }
+  .plant-card h4 { font-size: .85rem; font-family: var(--font-head); font-style: italic; color: var(--accent2); text-transform: capitalize; }
+  .plant-card p  { font-size: .72rem; color: var(--muted); margin-top: .25rem; font-family: var(--font-mono); }
+
+  .folder-hint {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    font-family: var(--font-mono);
+    font-size: .78rem;
+    color: var(--muted);
+    line-height: 1.8;
+    margin-top: 1rem;
+  }
+  .folder-hint .hl { color: var(--accent); }
+
+  /* ── Responsive ── */
+  @media (max-width: 600px) {
+    #preview-section { flex-direction: column; }
+    #preview-img { width: 100%; height: 220px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo-icon">🌿</div>
+    <h1>PlantAI</h1>
+    <p class="subtitle">Clasificador de Plantas</p>
+    <div id="model-status-bar">
+      <span class="dot"></span>
+      <span id="model-status-text">Verificando modelo...</span>
+    </div>
+  </header>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('predict')">🔍 Identificar</button>
+    <button class="tab-btn" onclick="switchTab('train')">🧠 Entrenar</button>
+    <button class="tab-btn" onclick="switchTab('model')">💾 Modelo</button>
+    <button class="tab-btn" onclick="switchTab('info')">📋 Plantas</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- TAB: PREDICT                                  -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div id="tab-predict" class="tab-content active">
+    <div class="card">
+      <div class="card-title">🌱 Sube una imagen de planta</div>
+
+      <div id="drop-zone">
+        <div class="drop-icon">🍃</div>
+        <p>Arrastra una imagen aquí o <span onclick="document.getElementById('file-input').click()">selecciona un archivo</span></p>
+        <p style="margin-top:.5rem; font-size:.75rem;">Máx 10 MB</p>
+        <input type="file" id="file-input" accept="image/*"/>
+      </div>
+
+      <div id="preview-section">
+        <img id="preview-img" src="" alt="Vista previa"/>
+        <div id="results-box">
+          <div id="loading-msg" style="display:none; color:var(--muted); font-size:.9rem; margin-bottom:.8rem;">
+            Analizando imagen... 🔬
+          </div>
+          <div id="top-result-box" class="top-result" style="display:none;">
+            <div class="plant-name" id="res-name">—</div>
+            <div class="pct" id="res-pct">—</div>
+            <div style="font-size:.75rem; color:var(--muted); margin-top:.3rem;">Confianza del modelo</div>
+          </div>
+          <ul class="bar-list" id="bar-list"></ul>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-outline" id="clear-btn" onclick="clearPrediction()" style="display:none">✕ Limpiar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- TAB: TRAIN                                    -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div id="tab-train" class="tab-content">
+    <div class="card">
+      <div class="card-title">⚙️ Configuración de Entrenamiento</div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label>Épocas</label>
+          <input type="number" id="epochs" value="20" min="1" max="200"/>
+        </div>
+        <div class="field">
+          <label>Batch Size</label>
+          <select id="batch-size">
+            <option>8</option>
+            <option selected>16</option>
+            <option>32</option>
+            <option>64</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Learning Rate</label>
+          <input type="number" id="lr" value="0.001" step="0.0001" min="0.00001"/>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="fine-tune" checked/>
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">Fine-tuning (descongelar últimas capas de MobileNetV2 — mejor accuracy, más tiempo)</span>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="train-btn" onclick="startTraining()">▶ Iniciar Entrenamiento</button>
+        <button class="btn btn-danger" id="stop-btn" style="display:none" disabled>⏹ Detener</button>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div id="training-progress">
+      <div class="card">
+        <div class="card-title">📈 Progreso</div>
+
+        <div class="progress-header">
+          <span id="epoch-label">Época 0 / 0</span>
+          <span id="pct-label">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-chip"><strong id="s-tacc">—</strong>Train Acc</div>
+          <div class="stat-chip"><strong id="s-vacc">—</strong>Val Acc</div>
+          <div class="stat-chip"><strong id="s-tloss">—</strong>Train Loss</div>
+          <div class="stat-chip"><strong id="s-vloss">—</strong>Val Loss</div>
+        </div>
+
+        <div id="training-log"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- TAB: MODEL                                    -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div id="tab-model" class="tab-content">
+    <div class="action-cards">
+
+      <div class="action-card">
+        <h3>📤 Exportar Modelo</h3>
+        <p>Descarga el modelo entrenado como <code>.keras</code> para guardarlo o compartirlo.</p>
+        <button class="btn btn-primary" onclick="exportModel()">⬇ Descargar .keras</button>
+      </div>
+
+      <div class="action-card">
+        <h3>📥 Importar Modelo</h3>
+        <p>Carga un archivo <code>.keras</code> previamente guardado sin necesidad de reentrenar.</p>
+        <input type="file" id="import-input" accept=".keras" style="display:none" onchange="importModel(this)"/>
+        <button class="btn btn-outline" onclick="document.getElementById('import-input').click()">📂 Seleccionar .keras</button>
+      </div>
+
+    </div>
+
+    <div class="card" style="margin-top:1rem;">
+      <div class="card-title">ℹ️ Estado del Modelo</div>
+      <div id="model-detail" style="font-family:var(--font-mono); font-size:.82rem; color:var(--muted); line-height:2;">
+        Cargando información...
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- TAB: INFO                                     -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div id="tab-info" class="tab-content">
+    <div class="card">
+      <div class="card-title">🌺 Plantas Soportadas</div>
+      <div class="plant-grid">
+        <div class="plant-card"><div class="plant-emoji">🌻</div><h4>Girasol</h4><p>girasol/</p></div>
+        <div class="plant-card"><div class="plant-emoji">🌵</div><h4>Aloe Vera</h4><p>aloe_vera/</p></div>
+        <div class="plant-card"><div class="plant-emoji">🌹</div><h4>Rosa</h4><p>rosa/</p></div>
+        <div class="plant-card"><div class="plant-emoji">🌷</div><h4>Tulipán</h4><p>tulipan/</p></div>
+        <div class="plant-card"><div class="plant-emoji">🌿</div><h4>Pasto</h4><p>pasto/</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🧬 Arquitectura</div>
+      <div style="font-family:var(--font-mono); font-size:.8rem; color:var(--muted); line-height:2;">
+        Base: MobileNetV2 (ImageNet)<br/>
+        Cabeza: GlobalAvgPool → BN → Dense(256) → Dropout(0.4) → Dense(5, softmax)<br/>
+        Pérdida: categorical_crossentropy<br/>
+        Optimizador: Adam (lr configurable)<br/>
+        Fine-tune: descongela últimas 30 capas de la base
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.wrapper -->
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- ══ SCRIPTS ══ -->
+<script>
+const API = '';
+
+/* ─── Tabs ─── */
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    const tabs = ['predict','train','model','info'];
+    b.classList.toggle('active', tabs[i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => {
+    c.classList.toggle('active', c.id === 'tab-' + name);
+  });
+  if (name === 'model') fetchModelInfo();
+}
+
+/* ─── Toast ─── */
+function toast(msg, type='success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + type;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = '', 3200);
+}
+
+/* ─── Model status ─── */
+async function checkModelStatus() {
+  try {
+    const r = await fetch(API + '/api/model_info');
+    const d = await r.json();
+    const bar  = document.getElementById('model-status-bar');
+    const text = document.getElementById('model-status-text');
+    if (d.loaded) {
+      bar.classList.add('loaded');
+      text.textContent = 'Modelo cargado · 5 clases';
+    } else {
+      bar.classList.remove('loaded');
+      text.textContent = 'Sin modelo · Entrena o importa uno';
+    }
+  } catch(e) { /* servidor no disponible */ }
+}
+
+async function fetchModelInfo() {
+  try {
+    const r = await fetch(API + '/api/model_info');
+    const d = await r.json();
+    const el = document.getElementById('model-detail');
+    if (d.loaded) {
+      el.innerHTML = `
+        Estado: <span style="color:var(--accent)">✅ Cargado</span><br/>
+        Clases: ${d.classes.join(', ')}<br/>
+        Tamaño entrada: ${d.input_size[0]}×${d.input_size[1]} px<br/>
+        Archivo: ${d.path || 'models/plant_model.keras'}
+      `;
+    } else {
+      el.innerHTML = `Estado: <span style="color:var(--muted)">⚠️ Sin modelo</span><br/>Entrena o importa un archivo .keras para comenzar.`;
+    }
+  } catch {}
+}
+
+/* ─── Predict ─── */
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); const f = e.dataTransfer.files[0]; if(f) handleFile(f); });
+fileInput.addEventListener('change', () => { if(fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+async function handleFile(file) {
+  const previewSec = document.getElementById('preview-section');
+  const previewImg = document.getElementById('preview-img');
+  const loadingMsg = document.getElementById('loading-msg');
+  const topBox     = document.getElementById('top-result-box');
+  const barList    = document.getElementById('bar-list');
+  const clearBtn   = document.getElementById('clear-btn');
+
+  // Show preview immediately
+  previewImg.src = URL.createObjectURL(file);
+  previewSec.classList.add('show');
+  loadingMsg.style.display = 'block';
+  topBox.style.display = 'none';
+  barList.innerHTML = '';
+  clearBtn.style.display = 'inline-flex';
+
+  const formData = new FormData();
+  formData.append('image', file);
+
+  try {
+    const r = await fetch(API + '/api/predict', { method: 'POST', body: formData });
+    const d = await r.json();
+
+    loadingMsg.style.display = 'none';
+
+    if (d.error) { toast('❌ ' + d.error, 'error'); return; }
+
+    // Update preview with thumbnail
+    if (d.thumbnail) previewImg.src = 'data:image/jpeg;base64,' + d.thumbnail;
+
+    // Top result
+    topBox.style.display = 'block';
+    const nameMap = { girasol:'Girasol 🌻', aloe_vera:'Aloe Vera 🌵', rosa:'Rosa 🌹', tulipan:'Tulipán 🌷', pasto:'Pasto 🌿' };
+    document.getElementById('res-name').textContent = nameMap[d.prediction] || d.prediction;
+    document.getElementById('res-pct').textContent  = d.confidence.toFixed(1) + '%';
+
+    // Bar chart
+    d.all_classes.forEach((item, i) => {
+      const li = document.createElement('li');
+      li.className = 'bar-item';
+      const pct = item.confidence.toFixed(1);
+      li.innerHTML = `
+        <span class="label">${(nameMap[item.class]||item.class).split(' ')[0]}</span>
+        <div class="bar-track"><div class="bar-fill ${i>0?'dim':''}" style="width:${pct}%"></div></div>
+        <span class="bar-pct">${pct}%</span>
+      `;
+      barList.appendChild(li);
+      // Animate bar
+      requestAnimationFrame(() => li.querySelector('.bar-fill').style.width = pct + '%');
+    });
+
+  } catch(e) {
+    loadingMsg.style.display = 'none';
+    toast('❌ Error de conexión con el servidor', 'error');
+  }
+}
+
+function clearPrediction() {
+  document.getElementById('preview-section').classList.remove('show');
+  document.getElementById('bar-list').innerHTML = '';
+  document.getElementById('top-result-box').style.display = 'none';
+  document.getElementById('clear-btn').style.display = 'none';
+  fileInput.value = '';
+}
+
+/* ─── Training ─── */
+let pollInterval = null;
+
+async function startTraining() {
+  const btn = document.getElementById('train-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Iniciando...';
+
+  const body = {
+    epochs:        parseInt(document.getElementById('epochs').value),
+    batch_size:    parseInt(document.getElementById('batch-size').value),
+    learning_rate: parseFloat(document.getElementById('lr').value),
+    fine_tune:     document.getElementById('fine-tune').checked,
+  };
+
+  try {
+    const r = await fetch(API + '/api/train', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (d.error) { toast('❌ ' + d.error, 'error'); btn.disabled=false; btn.textContent='▶ Iniciar Entrenamiento'; return; }
+
+    document.getElementById('training-progress').classList.add('show');
+    document.getElementById('training-log').innerHTML = '';
+    toast('✅ Entrenamiento iniciado', 'success');
+
+    pollInterval = setInterval(pollTraining, 1500);
+  } catch {
+    toast('❌ Error al conectar con el servidor', 'error');
+    btn.disabled = false;
+    btn.textContent = '▶ Iniciar Entrenamiento';
+  }
+}
+
+async function pollTraining() {
+  try {
+    const r = await fetch(API + '/api/training_status');
+    const d = await r.json();
+
+    document.getElementById('progress-fill').style.width = d.progress + '%';
+    document.getElementById('pct-label').textContent = d.progress + '%';
+    document.getElementById('epoch-label').textContent = `Época ${d.epoch} / ${d.total_epochs}`;
+    document.getElementById('s-tacc').textContent  = d.train_acc + '%';
+    document.getElementById('s-vacc').textContent  = d.val_acc + '%';
+    document.getElementById('s-tloss').textContent = d.train_loss;
+    document.getElementById('s-vloss').textContent = d.val_loss;
+
+    const logEl = document.getElementById('training-log');
+    if (d.log.length) {
+      logEl.innerHTML = d.log.map((l,i) => {
+        const cls = l.startsWith('✅') ? 'ok' : l.startsWith('❌') ? 'err' : '';
+        return `<p class="${cls}">${l}</p>`;
+      }).join('');
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    if (d.done) {
+      clearInterval(pollInterval);
+      document.getElementById('train-btn').disabled = false;
+      document.getElementById('train-btn').textContent = '▶ Iniciar Entrenamiento';
+      if (d.error) {
+        toast('❌ Error: ' + d.error, 'error');
+      } else {
+        toast('🌿 ¡Entrenamiento completado!', 'success');
+        checkModelStatus();
+      }
+    }
+  } catch {}
+}
+
+/* ─── Export / Import ─── */
+async function exportModel() {
+  try {
+    const r = await fetch(API + '/api/export');
+    if (!r.ok) { const d=await r.json(); toast('❌ '+d.error,'error'); return; }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'plant_model.keras';
+    a.click();
+    toast('✅ Modelo descargado', 'success');
+  } catch { toast('❌ Error al descargar','error'); }
+}
+
+async function importModel(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('model', file);
+  toast('⏳ Importando modelo...', 'success');
+  try {
+    const r = await fetch(API + '/api/import', { method:'POST', body:fd });
+    const d = await r.json();
+    if (d.error) { toast('❌ '+d.error,'error'); return; }
+    toast('✅ '+d.message,'success');
+    checkModelStatus();
+    fetchModelInfo();
+  } catch { toast('❌ Error al importar','error'); }
+  input.value = '';
+}
+
+/* ─── Init ─── */
+checkModelStatus();
+setInterval(checkModelStatus, 10000);
+</script>
+</body>
+</html>
